@@ -36,6 +36,15 @@ def startup():
     os.makedirs("data", exist_ok=True)
     os.makedirs("sessions", exist_ok=True)
     init_db()
+    # Mark any jobs left running/waiting from a previous server session as failed
+    from db import get_db
+    conn = get_db()
+    conn.execute(
+        "UPDATE jobs SET status='failed', finished_at=CURRENT_TIMESTAMP "
+        "WHERE status IN ('running', 'waiting_otp', 'waiting_push', 'pending')"
+    )
+    conn.commit()
+    conn.close()
 
 
 # ── Auth helpers ────────────────────────────────────────────────────────────
