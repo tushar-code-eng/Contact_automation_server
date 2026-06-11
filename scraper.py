@@ -63,17 +63,15 @@ def login_and_save_session(browser_context, page, ctx: UserContext, otp_fn=None)
     page.locator('input[type="password"]').fill(ctx.prpt_password)
     page.locator('input[type="submit"]').click()
 
-    # Wait for MFA page to settle
-    page.wait_for_timeout(3000)
-
-    # Detect whether a TOTP code input field is visible
+    # Wait up to 10s for the TOTP input to appear — if it doesn't, assume push notification
     totp_selector = "#idTxtBx_SAOTCC_OTC, input[name='otpCode'], input[autocomplete='one-time-code']"
-    needs_code = page.locator(totp_selector).count() > 0
-
-    if needs_code:
-        log("📲 TOTP code required...")
-    else:
-        log("📲 MFA step detected (push notification or no MFA) — waiting for approval...")
+    try:
+        page.wait_for_selector(totp_selector, timeout=10000)
+        needs_code = True
+        log("📲 TOTP code required — enter it on the website...")
+    except Exception:
+        needs_code = False
+        log("📲 No TOTP input found — assuming push notification...")
 
     if otp_fn:
         otp_fn(page, needs_code=needs_code)
