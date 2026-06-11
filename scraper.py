@@ -62,9 +62,17 @@ def login_and_save_session(browser_context, page, ctx: UserContext, otp_fn=None)
 
     page.locator('input[type="password"]').fill(ctx.prpt_password)
     page.locator('input[type="submit"]').click()
+    page.wait_for_timeout(3000)
 
-    # Always wait for the user to enter the OTP code via the website
-    log("📲 OTP required — waiting for code...")
+    # If a verification method selection page appears, click the Text/SMS option
+    sms_selector = "div[data-value='OneWaySMS'], li[data-value='OneWaySMS']"
+    if page.locator(sms_selector).count() > 0:
+        log("📱 Verification method page detected — clicking Text/SMS...")
+        page.locator(sms_selector).first.click()
+        page.wait_for_timeout(3000)
+
+    # OTP input should now be visible — wait for user to enter it via our website
+    log("📲 OTP sent — waiting for code to be entered on website...")
 
     if otp_fn:
         otp_fn(page, needs_code=True)
