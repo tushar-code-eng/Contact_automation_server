@@ -1,5 +1,12 @@
 import os
+import sys
 import asyncio
+
+# Playwright spawns a subprocess — on Windows the default SelectorEventLoop
+# doesn't support subprocesses, so force ProactorEventLoop process-wide.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
