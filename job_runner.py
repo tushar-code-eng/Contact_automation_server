@@ -1,3 +1,5 @@
+import asyncio
+import sys
 import threading
 import traceback
 from db import create_job, update_job_status, append_job_log
@@ -88,6 +90,12 @@ def _make_otp_fn(job_id: int):
 
 def _run_job(job_id: int, user_dict: dict):
     """Runs entirely in a background daemon thread."""
+
+    # On Windows, background threads get a SelectorEventLoop which doesn't
+    # support subprocesses — Playwright needs ProactorEventLoop.
+    if sys.platform == "win32":
+        loop = asyncio.ProactorEventLoop()
+        asyncio.set_event_loop(loop)
 
     # Wire the pipeline logger to write into DB for this thread
     def log_to_db(msg: str):
