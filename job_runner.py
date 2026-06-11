@@ -1,4 +1,5 @@
 import threading
+import traceback
 from db import create_job, update_job_status, append_job_log
 from pipeline_logger import set_logger
 from pipeline import run_pipeline
@@ -101,7 +102,10 @@ def _run_job(job_id: int, user_dict: dict):
         run_pipeline(ctx, otp_fn=otp_fn)
         update_job_status(job_id, "completed")
     except Exception as e:
+        tb = traceback.format_exc()
         append_job_log(job_id, f"❌ Job crashed: {e}")
+        for line in tb.splitlines():
+            append_job_log(job_id, line)
         update_job_status(job_id, "failed")
 
 
