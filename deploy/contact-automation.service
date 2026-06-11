@@ -1,0 +1,21 @@
+[Unit]
+Description=Contact Automation Server
+After=network.target
+
+[Service]
+Type=simple
+User=automation
+Group=automation
+WorkingDirectory=/opt/contact-automation
+EnvironmentFile=/opt/contact-automation/.env
+ExecStart=/opt/contact-automation/venv/bin/uvicorn main_server:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Allow Playwright to run headless Chromium
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target

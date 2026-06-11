@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard — Contact Automation</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    body { background: #f0f2f5; }
+    .navbar { background: #fff; border-bottom: 1px solid #e5e7eb; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+    .status-badge { font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar px-4 py-3 mb-4">
+    <span class="fw-bold">Contact Automation</span>
+    <div class="ms-auto d-flex gap-3 align-items-center">
+      {% if user.role == 'admin' %}
+      <a href="/admin" class="text-decoration-none text-muted">Admin</a>
+      {% endif %}
+      <a href="/settings" class="text-decoration-none text-muted">Settings</a>
+      <a href="/logout" class="text-decoration-none text-danger">Logout</a>
+    </div>
+  </nav>
+
+  <div class="container" style="max-width: 760px;">
+
+    <!-- Greeting -->
+    <h5 class="fw-bold mb-4">Hello, {{ user.email }}</h5>
+
+    <!-- Run Button -->
+    <div class="card p-4 mb-4">
+      <h6 class="fw-semibold mb-1">Run Sync</h6>
+      <p class="text-muted mb-3" style="font-size:0.9rem;">Scrape your Empire Today account and push contacts to GHL.</p>
+
+      {% if not user.prpt_username %}
+        <div class="alert alert-warning py-2 mb-3" style="font-size:0.875rem;">
+          Please set your PRPT credentials in <a href="/settings">Settings</a> before running.
+        </div>
+      {% endif %}
+
+      {% if active_job %}
+        <div class="alert alert-info py-2 mb-3" style="font-size:0.875rem;">
+          A job is already running. <a href="/run/{{ active_job.id }}">View logs</a>
+        </div>
+        <button class="btn btn-secondary" disabled>Run Now</button>
+      {% else %}
+        <form method="POST" action="/run">
+          <button type="submit" class="btn btn-primary" {% if not user.prpt_username %}disabled{% endif %}>
+            Run Now
+          </button>
+        </form>
+      {% endif %}
+    </div>
+
+    <!-- Run History -->
+    <div class="card p-4 mb-4">
+      <h6 class="fw-semibold mb-3">Recent Runs</h6>
+      {% if recent_jobs %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle" style="font-size:0.875rem;">
+          <thead class="table-light">
+            <tr>
+              <th>#</th>
+              <th>Started</th>
+              <th>Finished</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for job in recent_jobs %}
+            <tr>
+              <td class="text-muted">{{ job.id }}</td>
+              <td>{{ job.started_at or '—' }}</td>
+              <td>{{ job.finished_at or '—' }}</td>
+              <td>
+                {% if job.status == 'completed' %}
+                  <span class="badge bg-success">Completed</span>
+                {% elif job.status == 'failed' %}
+                  <span class="badge bg-danger">Failed</span>
+                {% elif job.status in ('waiting_otp', 'waiting_push') %}
+                  <span class="badge bg-warning text-dark">{{ job.status | replace('_', ' ') | title }}</span>
+                {% elif job.status == 'running' %}
+                  <span class="badge bg-primary">Running</span>
+                {% else %}
+                  <span class="badge bg-secondary">{{ job.status | title }}</span>
+                {% endif %}
+              </td>
+              <td><a href="/run/{{ job.id }}" class="text-decoration-none" style="font-size:0.8rem;">View</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="text-muted mb-0">No runs yet.</p>
+      {% endif %}
+    </div>
+
+  </div>
+</body>
+</html>

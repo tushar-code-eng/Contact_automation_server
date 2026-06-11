@@ -1,0 +1,21 @@
+{
+  "activity_id": true,
+  "self_gen": true,
+  "opportunity_id": false,
+  "appointment": true,
+  "status": true,
+  "contract_number": true,
+  "name": true,
+  "phone": true,
+  "alternate_phone": true,
+  "address": true,
+  "email": true,
+  "quote_option": true,
+  "is_primary": true,
+  "contract_total": true,
+  "area": true,
+  "product_line": true,
+  "series": true,
+  "style": true,
+  "service_region": true
+}

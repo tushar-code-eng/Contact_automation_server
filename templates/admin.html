@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin — Contact Automation</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <style>
+    body { background: #f0f2f5; }
+    .navbar { background: #fff; border-bottom: 1px solid #e5e7eb; }
+    .card { border: none; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+    .table th { font-size: 0.8rem; text-transform: uppercase; color: #6b7280; }
+    .modal-content { border-radius: 12px; border: none; }
+  </style>
+</head>
+<body>
+
+  <nav class="navbar px-4 py-3 mb-4">
+    <span class="fw-bold">Contact Automation — Admin</span>
+    <div class="ms-auto d-flex gap-3 align-items-center">
+      <a href="/dashboard" class="text-decoration-none text-muted">Dashboard</a>
+      <a href="/logout" class="text-decoration-none text-danger">Logout</a>
+    </div>
+  </nav>
+
+  <div class="container" style="max-width: 960px;">
+
+    {% if success %}
+    <div class="alert alert-success py-2">{{ success }}</div>
+    {% endif %}
+    {% if error %}
+    <div class="alert alert-danger py-2">{{ error }}</div>
+    {% endif %}
+
+    <!-- Create user -->
+    <div class="card p-4 mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-semibold mb-0">Create User</h6>
+      </div>
+      <form method="POST" action="/admin/create-user">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Email</label>
+            <input type="email" name="email" class="form-control" placeholder="user@example.com" required/>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Password</label>
+            <input type="password" name="password" class="form-control" placeholder="••••••••" required/>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">GHL Location ID</label>
+            <input type="text" name="ghl_location_id" class="form-control" placeholder="Location ID"/>
+          </div>
+          <div class="col-md-2 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary w-100">Create</button>
+          </div>
+        </div>
+        <div class="row g-3 mt-1">
+          <div class="col-md-10">
+            <label class="form-label fw-semibold">GHL API Token</label>
+            <input type="text" name="ghl_api_token" class="form-control" placeholder="pit-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Users table -->
+    <div class="card p-4">
+      <h6 class="fw-semibold mb-3">All Users</h6>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>PRPT Set</th>
+              <th>GHL Set</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td>{{ u.email }}</td>
+              <td>
+                <span class="badge {% if u.role == 'admin' %}bg-dark{% else %}bg-secondary{% endif %}">
+                  {{ u.role }}
+                </span>
+              </td>
+              <td>
+                {% if u.prpt_username %}
+                  <span class="badge bg-success">Yes</span>
+                {% else %}
+                  <span class="badge bg-light text-muted">No</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if u.ghl_api_token %}
+                  <span class="badge bg-success">Yes</span>
+                {% else %}
+                  <span class="badge bg-light text-muted">No</span>
+                {% endif %}
+              </td>
+              <td style="font-size:0.8rem; color:#6b7280;">{{ u.created_at[:10] }}</td>
+              <td class="text-end">
+                <button class="btn btn-sm btn-outline-secondary"
+                        onclick="openGhlModal({{ u.id }}, '{{ u.ghl_api_token }}', '{{ u.ghl_location_id }}')">
+                  Edit GHL
+                </button>
+                {% if u.role != 'admin' %}
+                <form method="POST" action="/admin/delete-user/{{ u.id }}" class="d-inline"
+                      onsubmit="return confirm('Delete {{ u.email }}?')">
+                  <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Edit GHL Modal -->
+  <div class="modal fade" id="ghlModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content p-4">
+        <h6 class="fw-semibold mb-3">Update GHL Settings</h6>
+        <form method="POST" id="ghlForm">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">GHL API Token</label>
+            <input type="text" name="ghl_api_token" id="ghlToken" class="form-control" required/>
+          </div>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">GHL Location ID</label>
+            <input type="text" name="ghl_location_id" id="ghlLocation" class="form-control" required/>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Save</button>
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    function openGhlModal(userId, token, location) {
+      document.getElementById('ghlForm').action = '/admin/update-ghl/' + userId;
+      document.getElementById('ghlToken').value = token;
+      document.getElementById('ghlLocation').value = location;
+      new bootstrap.Modal(document.getElementById('ghlModal')).show();
+    }
+  </script>
+</body>
+</html>
