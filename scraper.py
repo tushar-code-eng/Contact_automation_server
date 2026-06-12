@@ -313,8 +313,12 @@ def scrape_all(ctx: UserContext, start_date, end_date, otp_fn=None):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
 
-        context = browser.new_context()
-        log("🔐 Need to login")
+        if not is_session_expired(ctx) and os.path.exists(ctx.session_file):
+            context = browser.new_context(storage_state=ctx.session_file)
+            log("⚡ Using saved session")
+        else:
+            context = browser.new_context()
+            log("🔐 Need to login")
 
         page = context.new_page()
         try:
@@ -323,7 +327,9 @@ def scrape_all(ctx: UserContext, start_date, end_date, otp_fn=None):
         except Exception:
             pass
 
-        login_and_save_session(context, page, ctx, otp_fn=otp_fn)
+        if is_session_expired(ctx) or not os.path.exists(ctx.session_file):
+            delete_expired_session(ctx)
+            login_and_save_session(context, page, ctx, otp_fn=otp_fn)
 
         report_url = build_report_url(ctx, start_date, end_date)
         log(f"🌐 Loading activity list: {report_url}")
@@ -450,8 +456,13 @@ def scrape_installations(ctx: UserContext, start_date=None, end_date=None):
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
 
-        context = browser.new_context()
-        log("🔐 Logging in for installations...")
+        if not is_session_expired(ctx) and os.path.exists(ctx.session_file):
+            context = browser.new_context(storage_state=ctx.session_file)
+            log("⚡ Using saved session for installations")
+        else:
+            log("🔐 Session missing or expired — skipping installations")
+            browser.close()
+            return installations
 
         page = context.new_page()
         try:
@@ -459,8 +470,6 @@ def scrape_installations(ctx: UserContext, start_date=None, end_date=None):
             page.set_default_timeout(PLAYWRIGHT_TIMEOUT_MS)
         except Exception:
             pass
-
-        login_and_save_session(context, page, ctx)
 
         try:
             rep = ctx.prpt_rep_id
