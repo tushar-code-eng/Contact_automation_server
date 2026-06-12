@@ -59,7 +59,8 @@ def build_date_range(ctx: UserContext):
     saved = _load_json(ctx.path("last_date.json"), {}).get("last_end_date")
     if saved:
         anchor = parse_appointment_date(saved) or datetime.now()
-        start_date = format_query_date(anchor - timedelta(days=90))
+        # start_date = format_query_date(anchor - timedelta(days=90))  # 90-day lookback disabled temporarily
+        start_date = format_query_date(anchor)
     else:
         start_date = "1/1/2024"
 
