@@ -316,7 +316,7 @@ def extract_rows(page):
 
 # ── Main scrape ──────────────────────────────────────────────────────────────
 
-def scrape_all(ctx: UserContext, start_date, end_date, otp_fn=None):
+def scrape_all(ctx: UserContext, start_date, end_date, otp_fn=None, stop_fn=None):
     field_config = load_field_config()
     progress_backup_dir = os.path.join(ctx.data_dir, "backups")
     latest_scrape_file  = ctx.path("latest_scrape.json")
@@ -362,6 +362,9 @@ def scrape_all(ctx: UserContext, start_date, end_date, otp_fn=None):
         empty_scrolls = 0
 
         while empty_scrolls < 5:
+            if stop_fn and stop_fn():
+                log("🛑 Stop requested — halting scrape.")
+                break
             rows = extract_rows(page)
             new_count = 0
             for r in rows:
@@ -387,6 +390,9 @@ def scrape_all(ctx: UserContext, start_date, end_date, otp_fn=None):
         total_rows = len(all_rows)
 
         for batch_start in range(0, total_rows, DETAIL_SCRAPE_THREADS):
+            if stop_fn and stop_fn():
+                log("🛑 Stop requested — halting detail scrape.")
+                break
             batch_end  = min(batch_start + DETAIL_SCRAPE_THREADS, total_rows)
             batch_rows = all_rows[batch_start:batch_end]
             batch_num  = (batch_start // DETAIL_SCRAPE_THREADS) + 1

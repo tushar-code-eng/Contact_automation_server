@@ -312,7 +312,7 @@ def run_pipeline(ctx: UserContext, otp_fn=None, stop_fn=None):
     else:
         start_date, end_date = build_date_range(ctx)
         log(f"📅 Scraping range: {start_date} → {end_date}")
-        raw_sales = scrape_all(ctx, start_date, end_date, otp_fn=otp_fn)
+        raw_sales = scrape_all(ctx, start_date, end_date, otp_fn=otp_fn, stop_fn=stop_fn)
         log(f"📊 Scraped {len(raw_sales)} rows")
         save_backup(ctx, raw_sales)
         pending_end_date = end_date
