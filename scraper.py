@@ -351,6 +351,17 @@ def scrape_all(ctx: UserContext, start_date, end_date, otp_fn=None, stop_fn=None
         if not page.url.startswith("https://prpt.todaysales.us/reports/"):
             log(f"🔒 Redirected to {page.url[:80]} — session rejected by server, re-logging in...")
             delete_expired_session(ctx)
+            # The old context carries stale Microsoft SSO cookies that skip the
+            # email-input step and break the login flow — start completely fresh.
+            page.close()
+            context.close()
+            context = browser.new_context()
+            page = context.new_page()
+            try:
+                page.set_default_navigation_timeout(PLAYWRIGHT_TIMEOUT_MS)
+                page.set_default_timeout(PLAYWRIGHT_TIMEOUT_MS)
+            except Exception:
+                pass
             login_and_save_session(context, page, ctx, otp_fn=otp_fn)
             log(f"🌐 Reloading activity list after fresh login...")
             page.goto(report_url)
