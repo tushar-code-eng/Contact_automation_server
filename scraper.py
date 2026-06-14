@@ -346,11 +346,20 @@ def scrape_all(ctx: UserContext, start_date, end_date, otp_fn=None, stop_fn=None
         log(f"🌐 Loading activity list: {report_url}")
         page.goto(report_url)
 
+        # Detect server-side session rejection — PRPT redirects to login/SSO
+        # when cookies are invalid even if the session file is recent.
+        if not page.url.startswith("https://prpt.todaysales.us/reports/"):
+            log(f"🔒 Redirected to {page.url[:80]} — session rejected by server, re-logging in...")
+            delete_expired_session(ctx)
+            login_and_save_session(context, page, ctx, otp_fn=otp_fn)
+            log(f"🌐 Reloading activity list after fresh login...")
+            page.goto(report_url)
+
         try:
             page.wait_for_selector("table", timeout=10000)
             log("✅ Table loaded")
         except Exception:
-            log("⚠️ Table not found, proceeding anyway")
+            log(f"⚠️ Table not found on {page.url[:80]} — page may not have loaded correctly")
 
         try:
             page.wait_for_selector("tbody tr", timeout=2000)
@@ -503,6 +512,11 @@ def scrape_installations(ctx: UserContext, start_date=None, end_date=None):
 
             log(f"📍 Loading installations...")
             page.goto(url, wait_until="networkidle")
+
+            if not page.url.startswith("https://prpt.todaysales.us/reports/"):
+                log(f"🔒 Redirected to {page.url[:80]} — session rejected, skipping installations")
+                browser.close()
+                return installations
 
             try:
                 page.wait_for_selector("table", timeout=10000)
