@@ -49,6 +49,12 @@
         {% endif %}">
         {{ job.status | replace('_', ' ') | title }}
       </span>
+      {% if job.status not in ('completed', 'failed') %}
+      <form method="POST" action="/run/{{ job.id }}/stop" class="ms-auto"
+            onsubmit="return confirm('Stop this job?')">
+        <button type="submit" class="btn btn-sm btn-outline-danger" id="stop-btn">Stop Job</button>
+      </form>
+      {% endif %}
     </div>
 
     <!-- TOTP input (shown when status = waiting_otp) -->
@@ -146,16 +152,27 @@
         });
     }
 
-    if (!isDone) {
-      // Open SSE stream
+    if (isDone) {
+      // Load all past logs via a single fetch
+      fetch(`/run/${JOB_ID}/logs`)
+        .then(r => r.json())
+        .then(d => {
+          d.logs.forEach(msg => appendLine(msg));
+        });
+    } else {
+      // Open SSE stream for live jobs
       const evtSource = new EventSource(`/run/${JOB_ID}/stream`);
 
       evtSource.onmessage = (e) => {
         if (e.data === '[DONE]') {
           evtSource.close();
-          dot.style.display  = 'none';
+          dot.style.display = 'none';
           liveLabel.textContent = 'Finished';
+          isDone = true;
           pollStatus();
+          // Hide stop button when done
+          const stopBtn = document.getElementById('stop-btn');
+          if (stopBtn) stopBtn.closest('form').style.display = 'none';
           return;
         }
         appendLine(e.data);
@@ -167,7 +184,7 @@
         dot.style.display = 'none';
       };
 
-      // Also poll status every 2s to catch waiting_otp
+      // Poll status every 2s to catch waiting_otp / waiting_push
       const statusInterval = setInterval(() => {
         pollStatus();
         if (isDone) clearInterval(statusInterval);

@@ -1,8 +1,11 @@
 import http.client
 import json
+import time
 
 from pipeline_logger import log, error
 from user_context import UserContext
+
+BACKOFF = [2, 4, 8, 16, 32]
 
 
 def map_contact_to_ghl(contact: dict, ctx: UserContext) -> dict:
@@ -53,41 +56,60 @@ def map_contact_to_ghl(contact: dict, ctx: UserContext) -> dict:
 
 
 def send_to_ghl(contact_data, ctx: UserContext):
-    try:
-        conn = http.client.HTTPSConnection("services.leadconnectorhq.com")
-
-        if isinstance(contact_data, list):
-            sent = 0
-            for contact in contact_data:
-                payload = map_contact_to_ghl(contact, ctx)
-                if send_single_contact(conn, payload, ctx):
-                    sent += 1
-            log(f"✅ Sent {sent}/{len(contact_data)} contacts to GHL")
-        else:
-            payload = map_contact_to_ghl(contact_data, ctx)
-            if send_single_contact(conn, payload, ctx):
-                log(f"✅ Sent: {contact_data.get('name')}")
-
-        conn.close()
-    except Exception as e:
-        error(f"❌ Exception sending to GHL: {e}")
+    if isinstance(contact_data, list):
+        sent = 0
+        for contact in contact_data:
+            payload = map_contact_to_ghl(contact, ctx)
+            if send_single_contact(None, payload, ctx):
+                sent += 1
+        log(f"✅ Sent {sent}/{len(contact_data)} contacts to GHL")
+    else:
+        payload = map_contact_to_ghl(contact_data, ctx)
+        if send_single_contact(None, payload, ctx):
+            log(f"✅ Sent: {contact_data.get('name')}")
 
 
 def send_single_contact(conn, payload: dict, ctx: UserContext) -> bool:
-    try:
-        headers = {
-            "Content-Type":  "application/json",
-            "Accept":        "application/json",
-            "Version":       "2021-07-28",
-            "Authorization": f"Bearer {ctx.ghl_api_token}",
-        }
-        conn.request("POST", "/contacts/upsert", json.dumps(payload), headers)
-        res  = conn.getresponse()
-        data = res.read()
-        if res.status in (200, 201):
-            return True
-        error(f"❌ GHL API Error ({res.status}): {data.decode('utf-8')}")
-        return False
-    except Exception as e:
-        error(f"❌ API Request Exception: {e}")
-        return False
+    headers = {
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+        "Version":       "2021-07-28",
+        "Authorization": f"Bearer {ctx.ghl_api_token}",
+    }
+    last_exc = None
+    for attempt, delay in enumerate(BACKOFF, start=1):
+        try:
+            # Re-create connection on every retry since previous may be closed
+            conn = http.client.HTTPSConnection("services.leadconnectorhq.com")
+            conn.request("POST", "/contacts/upsert", json.dumps(payload), headers)
+            res  = conn.getresponse()
+            data = res.read()
+
+            if res.status in (200, 201):
+                return True
+
+            # 429 = rate limited — always retry
+            # 5xx = server error — retry
+            # 4xx (except 429) = bad request — no point retrying
+            if res.status == 429 or res.status >= 500:
+                msg = data.decode("utf-8")
+                if attempt < len(BACKOFF):
+                    log(f"⚠️ GHL API {res.status} (attempt {attempt}/{len(BACKOFF)}) — retrying in {delay}s...")
+                    time.sleep(delay)
+                    continue
+                error(f"❌ GHL API Error ({res.status}) after {len(BACKOFF)} attempts: {msg}")
+                return False
+
+            error(f"❌ GHL API Error ({res.status}): {data.decode('utf-8')}")
+            return False
+
+        except Exception as e:
+            last_exc = e
+            if attempt < len(BACKOFF):
+                log(f"⚠️ GHL request failed (attempt {attempt}/{len(BACKOFF)}): {e} — retrying in {delay}s...")
+                time.sleep(delay)
+            else:
+                error(f"❌ GHL request failed after {len(BACKOFF)} attempts: {e}")
+                return False
+
+    return False

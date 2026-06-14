@@ -20,13 +20,16 @@ from db import (
     get_job, get_job_logs_since,
 )
 from auth import authenticate, hash_password
-from job_runner import start_job, submit_otp
+from job_runner import start_job, submit_otp, request_stop
+
+_secret_key = os.getenv("SECRET_KEY", "")
+if not _secret_key or _secret_key == "change-me-in-production":
+    raise RuntimeError("SECRET_KEY must be set to a strong random string in .env")
 
 app = FastAPI()
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=os.getenv("SECRET_KEY", "change-me-in-production"),
-)
+app.add_middleware(SessionMiddleware, secret_key=_secret_key)
+
+os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -35,13 +38,19 @@ templates = Jinja2Templates(directory="templates")
 def startup():
     os.makedirs("data", exist_ok=True)
     os.makedirs("sessions", exist_ok=True)
+    os.makedirs("backups", exist_ok=True)
     init_db()
-    # Mark any jobs left running/waiting from a previous server session as failed
+
     from db import get_db
     conn = get_db()
+    # Mark stale jobs from previous server session as failed
     conn.execute(
         "UPDATE jobs SET status='failed', finished_at=CURRENT_TIMESTAMP "
         "WHERE status IN ('running', 'waiting_otp', 'waiting_push', 'pending')"
+    )
+    # Keep only last 10 days of job logs
+    conn.execute(
+        "DELETE FROM job_logs WHERE created_at < datetime('now', '-10 days')"
     )
     conn.commit()
     conn.close()
@@ -295,6 +304,34 @@ def run_otp(request: Request, job_id: int, otp_code: str = Form(...)):
 
     submit_otp(job_id, otp_code)
     return RedirectResponse(f"/run/{job_id}", status_code=302)
+
+
+@app.post("/run/{job_id}/stop")
+def run_stop(request: Request, job_id: int):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    job = get_job(job_id)
+    if job and job["user_id"] == user["id"]:
+        request_stop(job_id)
+
+    return RedirectResponse(f"/run/{job_id}", status_code=302)
+
+
+@app.get("/run/{job_id}/logs")
+def run_logs(request: Request, job_id: int):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    job = get_job(job_id)
+    if not job or job["user_id"] != user["id"]:
+        return {"logs": []}
+
+    from db import get_job_logs
+    rows = get_job_logs(job_id)
+    return {"logs": [r["message"] for r in rows]}
 
 
 @app.get("/run/{job_id}/stream")

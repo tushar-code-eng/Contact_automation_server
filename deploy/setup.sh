@@ -35,6 +35,9 @@ echo "=== [7/7] Install Playwright browsers ==="
 playwright install chromium
 playwright install-deps chromium
 
+echo "=== Setting up nightly DB backup (2am daily) ==="
+(crontab -l 2>/dev/null; echo "0 2 * * * cd /opt/contact-automation && venv/bin/python scripts/backup_db.py >> /var/log/contact-automation-backup.log 2>&1") | crontab -
+
 echo ""
 echo "✅ Setup complete."
 echo "Next steps:"

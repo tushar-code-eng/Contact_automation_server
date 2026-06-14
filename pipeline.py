@@ -27,8 +27,16 @@ def _load_json(path, default):
 
 
 def _save_json(path, data):
-    with open(path, "w") as f:
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
+    os.replace(tmp, path)  # atomic — prevents half-written files on crash
+
+
+def _backup(path):
+    """Keep one .bak copy of a file before overwriting it."""
+    if os.path.exists(path):
+        os.replace(path, path + ".bak")
 
 
 # ── Date helpers ─────────────────────────────────────────────────────────────
@@ -59,8 +67,7 @@ def build_date_range(ctx: UserContext):
     saved = _load_json(ctx.path("last_date.json"), {}).get("last_end_date")
     if saved:
         anchor = parse_appointment_date(saved) or datetime.now()
-        # start_date = format_query_date(anchor - timedelta(days=90))  # 90-day lookback disabled temporarily
-        start_date = format_query_date(anchor)
+        start_date = format_query_date(anchor - timedelta(days=90))
     else:
         start_date = "1/1/2024"
 
@@ -77,6 +84,7 @@ def load_all_records(ctx: UserContext) -> dict:
 
 
 def save_all_records(ctx: UserContext, records_dict: dict):
+    _backup(ctx.path("all_records.json"))
     _save_json(ctx.path("all_records.json"), list(records_dict.values()))
     log(f"💾 Saved {len(records_dict)} accumulated records")
 
@@ -86,6 +94,7 @@ def load_scheduled_records(ctx: UserContext) -> dict:
 
 
 def save_scheduled_records(ctx: UserContext, records_dict: dict):
+    _backup(ctx.path("scheduled_records.json"))
     _save_json(ctx.path("scheduled_records.json"), list(records_dict.values()))
     log(f"💾 Saved {len(records_dict)} scheduled records")
 
@@ -266,11 +275,20 @@ def cleanup_old_files(ctx: UserContext, days: int = 7):
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
 
-def run_pipeline(ctx: UserContext, otp_fn=None):
+class JobStoppedError(Exception):
+    pass
+
+
+def run_pipeline(ctx: UserContext, otp_fn=None, stop_fn=None):
     """
     Run the full scrape → merge → GHL push pipeline for a single user.
-    otp_fn: optional callable(page) passed to the scraper for OTP handling.
+    otp_fn:  optional callable(page) passed to the scraper for OTP handling.
+    stop_fn: optional callable() — returns True if job should be cancelled.
     """
+    def check_stop():
+        if stop_fn and stop_fn():
+            raise JobStoppedError("Job stopped by user")
+
     ctx.ensure_dirs()
     log("🚀 Starting pipeline...")
 
@@ -323,10 +341,12 @@ def run_pipeline(ctx: UserContext, otp_fn=None):
 
     _save_json(deduped_sales_file, sales_data)
 
+    check_stop()
     # ── Step 1.5: Re-scrape scheduled records ─────────────────────────────
     log("\n📍 STEP 1.5: Re-scraping scheduled records...")
     rescrape_scheduled_records(ctx)
 
+    check_stop()
     # ── Step 2: Scrape installations ──────────────────────────────────────
     log("\n📍 STEP 2: Scraping installations...")
     deduped_inst_file = ctx.path("deduped_installations.json")
@@ -341,6 +361,7 @@ def run_pipeline(ctx: UserContext, otp_fn=None):
 
     _save_json(deduped_inst_file, list(installations_dict.values()))
 
+    check_stop()
     # ── Step 3: Merge ─────────────────────────────────────────────────────
     log("\n📍 STEP 3: Merging installations with sales...")
     merged_data, max_install_date = merge_with_installations(sales_data, installations_dict)
@@ -349,6 +370,7 @@ def run_pipeline(ctx: UserContext, otp_fn=None):
     if max_install_date:
         pending_install_date = max_install_date
 
+    check_stop()
     # ── Step 4: Tags ──────────────────────────────────────────────────────
     log("\n📍 STEP 4: Adding tags...")
     final_data = add_tag_field(merged_data)
@@ -373,6 +395,7 @@ def run_pipeline(ctx: UserContext, otp_fn=None):
     save_scheduled_records(ctx, scheduled_dict)
     log(f"💾 {len(scheduled_dict)} scheduled extracted, {len(non_scheduled)} kept for GHL")
 
+    check_stop()
     # ── Step 5: Send to GHL ───────────────────────────────────────────────
     log("\n📍 STEP 5: Sending to GHL...")
 

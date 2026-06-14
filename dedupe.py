@@ -3,6 +3,13 @@ import os
 import hashlib
 
 
+def _atomic_write(path, data):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.replace(tmp, path)
+
+
 def _path(data_dir: str, filename: str) -> str:
     return os.path.join(data_dir, filename)
 
@@ -21,8 +28,7 @@ def load_processed(data_dir: str) -> set:
 
 
 def save_processed(data_dir: str, ids: set):
-    with open(_path(data_dir, "processed_ids.json"), "w") as f:
-        json.dump(list(ids), f)
+    _atomic_write(_path(data_dir, "processed_ids.json"), list(ids))
 
 
 def is_new(activity_id: str, processed_ids: set) -> bool:
@@ -49,8 +55,7 @@ def load_processed_hashes(data_dir: str) -> dict:
 
 
 def save_processed_hashes(data_dir: str, hashes: dict):
-    with open(_path(data_dir, "processed_hashes.json"), "w") as f:
-        json.dump(hashes, f)
+    _atomic_write(_path(data_dir, "processed_hashes.json"), hashes)
 
 
 def has_record_changed(activity_id: str, record: dict, processed_hashes: dict) -> bool:

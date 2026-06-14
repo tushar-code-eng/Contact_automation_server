@@ -2,6 +2,7 @@ from playwright.sync_api import sync_playwright
 import re
 import json
 import os
+import time
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 
@@ -226,27 +227,37 @@ def scrape_detail(page, activity_id):
 
 
 def scrape_detail_parallel(activity_id, ctx: UserContext):
-    """Scrape one activity's detail page in its own Playwright instance."""
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = (
-                browser.new_context(storage_state=ctx.session_file)
-                if os.path.exists(ctx.session_file)
-                else browser.new_context()
-            )
-            page = context.new_page()
-            try:
-                page.set_default_navigation_timeout(PLAYWRIGHT_TIMEOUT_MS)
-                page.set_default_timeout(PLAYWRIGHT_TIMEOUT_MS)
-            except Exception:
-                pass
-            detail = scrape_detail(page, activity_id)
-            browser.close()
-            return detail
-    except Exception as e:
-        log(f"❌ Error scraping detail for {activity_id}: {e}")
-        return {}
+    """Scrape one activity's detail page with exponential backoff retries."""
+    backoff = [2, 4, 8, 16, 32]
+    last_exc = None
+
+    for attempt, delay in enumerate(backoff, start=1):
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = (
+                    browser.new_context(storage_state=ctx.session_file)
+                    if os.path.exists(ctx.session_file)
+                    else browser.new_context()
+                )
+                page = context.new_page()
+                try:
+                    page.set_default_navigation_timeout(PLAYWRIGHT_TIMEOUT_MS)
+                    page.set_default_timeout(PLAYWRIGHT_TIMEOUT_MS)
+                except Exception:
+                    pass
+                detail = scrape_detail(page, activity_id)
+                browser.close()
+                return detail
+        except Exception as e:
+            last_exc = e
+            if attempt < len(backoff):
+                log(f"⚠️ Detail scrape failed for {activity_id} (attempt {attempt}/{len(backoff)}): {e} — retrying in {delay}s...")
+                time.sleep(delay)
+            else:
+                log(f"❌ Detail scrape failed for {activity_id} after {len(backoff)} attempts: {e}")
+
+    return {}
 
 
 # ── Summary table extraction ─────────────────────────────────────────────────
@@ -311,7 +322,7 @@ def scrape_all(ctx: UserContext, start_date, end_date, otp_fn=None):
     latest_scrape_file  = ctx.path("latest_scrape.json")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=True)
 
         if not is_session_expired(ctx) and os.path.exists(ctx.session_file):
             context = browser.new_context(storage_state=ctx.session_file)
@@ -454,7 +465,7 @@ def scrape_installations(ctx: UserContext, start_date=None, end_date=None):
     installations = {}
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=True)
 
         if not is_session_expired(ctx) and os.path.exists(ctx.session_file):
             context = browser.new_context(storage_state=ctx.session_file)

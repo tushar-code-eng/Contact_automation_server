@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from encryption import encrypt, decrypt
 
 DB_PATH = os.getenv("DB_PATH", "db.sqlite")
 
@@ -61,32 +62,41 @@ def create_user(email: str, password_hash: str, role: str = "user") -> int:
     return user_id
 
 
+def _decrypt_user(user):
+    if user is None:
+        return None
+    u = dict(user)
+    u["prpt_password"] = decrypt(u.get("prpt_password") or "")
+    u["ghl_api_token"] = decrypt(u.get("ghl_api_token") or "")
+    return u
+
+
 def get_user_by_email(email: str):
     conn = get_db()
     user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
     conn.close()
-    return user
+    return _decrypt_user(user)
 
 
 def get_user_by_id(user_id: int):
     conn = get_db()
     user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     conn.close()
-    return user
+    return _decrypt_user(user)
 
 
 def get_all_users():
     conn = get_db()
     users = conn.execute("SELECT * FROM users ORDER BY created_at DESC").fetchall()
     conn.close()
-    return users
+    return [_decrypt_user(u) for u in users]
 
 
 def update_user_prpt(user_id: int, prpt_username: str, prpt_password: str, prpt_rep_id: str):
     conn = get_db()
     conn.execute(
         "UPDATE users SET prpt_username=?, prpt_password=?, prpt_rep_id=? WHERE id=?",
-        (prpt_username, prpt_password, prpt_rep_id, user_id),
+        (prpt_username, encrypt(prpt_password), prpt_rep_id, user_id),
     )
     conn.commit()
     conn.close()
@@ -96,7 +106,7 @@ def update_user_ghl(user_id: int, ghl_api_token: str, ghl_location_id: str):
     conn = get_db()
     conn.execute(
         "UPDATE users SET ghl_api_token=?, ghl_location_id=? WHERE id=?",
-        (ghl_api_token, ghl_location_id, user_id),
+        (encrypt(ghl_api_token), ghl_location_id, user_id),
     )
     conn.commit()
     conn.close()

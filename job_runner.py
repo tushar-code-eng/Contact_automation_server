@@ -1,26 +1,39 @@
+import os
 import threading
 import traceback
 from db import create_job, update_job_status, append_job_log
 from pipeline_logger import set_logger
-from pipeline import run_pipeline
+from pipeline import run_pipeline, JobStoppedError
 from user_context import build_context
 
-# ── OTP coordination ──────────────────────────────────────────────────────────
-# Each job that reaches the OTP step blocks on an Event until the web UI
-# calls submit_otp() with the code.
+# Max concurrent Playwright browsers — configurable via env
+_job_semaphore = threading.Semaphore(int(os.getenv("MAX_CONCURRENT_JOBS", "5")))
 
-_lock       = threading.Lock()
-_otp_events = {}   # job_id -> threading.Event
-_otp_values = {}   # job_id -> str (the code)
+# ── OTP coordination ──────────────────────────────────────────────────────────
+_lock        = threading.Lock()
+_otp_events  = {}   # job_id -> threading.Event
+_otp_values  = {}   # job_id -> str
+_stop_events = {}   # job_id -> threading.Event
 
 
 def submit_otp(job_id: int, otp_code: str):
-    """Called from the web route when the user submits their OTP code."""
     with _lock:
         _otp_values[job_id] = otp_code
         event = _otp_events.get(job_id)
     if event:
         event.set()
+
+
+def request_stop(job_id: int):
+    """Called from the web route when the user clicks Stop."""
+    with _lock:
+        event = _stop_events.get(job_id)
+        # Also unblock any waiting OTP so the thread can exit cleanly
+        otp_event = _otp_events.get(job_id)
+    if event:
+        event.set()
+    if otp_event:
+        otp_event.set()
 
 
 def _make_otp_fn(job_id: int):
@@ -89,24 +102,42 @@ def _make_otp_fn(job_id: int):
 def _run_job(job_id: int, user_dict: dict):
     """Runs entirely in a background daemon thread."""
 
-    # Wire the pipeline logger to write into DB for this thread
+    stop_event = threading.Event()
+    with _lock:
+        _stop_events[job_id] = stop_event
+
     def log_to_db(msg: str):
         append_job_log(job_id, msg)
 
+    def stop_fn():
+        return stop_event.is_set()
+
     set_logger(log_to_db)
+
+    # Wait for a free browser slot — shows as "pending" in UI until acquired
+    append_job_log(job_id, "⏳ Waiting for available slot...")
+    _job_semaphore.acquire()
+    append_job_log(job_id, "▶️ Slot acquired — starting pipeline...")
     update_job_status(job_id, "running")
 
     try:
         ctx    = build_context(user_dict)
         otp_fn = _make_otp_fn(job_id)
-        run_pipeline(ctx, otp_fn=otp_fn)
+        run_pipeline(ctx, otp_fn=otp_fn, stop_fn=stop_fn)
         update_job_status(job_id, "completed")
+    except JobStoppedError:
+        append_job_log(job_id, "🛑 Job stopped by user.")
+        update_job_status(job_id, "failed")
     except Exception as e:
         tb = traceback.format_exc()
         append_job_log(job_id, f"❌ Job crashed: {e}")
         for line in tb.splitlines():
             append_job_log(job_id, line)
         update_job_status(job_id, "failed")
+    finally:
+        _job_semaphore.release()
+        with _lock:
+            _stop_events.pop(job_id, None)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
