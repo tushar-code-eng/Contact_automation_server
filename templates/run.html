@@ -179,9 +179,14 @@
       };
 
       evtSource.onerror = () => {
-        evtSource.close();
-        appendLine('⚠️ Log stream disconnected.');
-        dot.style.display = 'none';
+        // CLOSED means the server explicitly ended the stream (job done).
+        // CONNECTING means the browser is already trying to reconnect — let it.
+        if (evtSource.readyState === EventSource.CLOSED) {
+          appendLine('⚠️ Log stream ended unexpectedly.');
+          dot.style.display = 'none';
+        }
+        // readyState === CONNECTING: browser will auto-reconnect using Last-Event-ID,
+        // resuming from the last received log row — no action needed.
       };
 
       // Poll status every 2s to catch waiting_otp / waiting_push

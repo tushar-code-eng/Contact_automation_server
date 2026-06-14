@@ -336,10 +336,20 @@ def run_logs(request: Request, job_id: int):
 
 @app.get("/run/{job_id}/stream")
 async def run_stream(request: Request, job_id: int):
-    """SSE endpoint — streams job logs to the browser as they arrive."""
+    """SSE endpoint — streams job logs to the browser as they arrive.
+
+    Supports native SSE reconnection: the browser sends Last-Event-ID after
+    a dropped connection and the stream resumes from that log row, so the
+    client never sees duplicate or missing lines without a page refresh.
+    """
+    raw_last_id = request.headers.get("last-event-id", "0")
+    try:
+        initial_last_id = int(raw_last_id)
+    except ValueError:
+        initial_last_id = 0
 
     async def event_generator():
-        last_id   = 0
+        last_id   = initial_last_id
         done_sent = False
 
         while not done_sent:
@@ -349,9 +359,8 @@ async def run_stream(request: Request, job_id: int):
             rows = get_job_logs_since(job_id, last_id)
             for row in rows:
                 last_id = row["id"]
-                # Escape newlines so SSE framing stays intact
                 msg = str(row["message"]).replace("\n", " ")
-                yield f"data: {msg}\n\n"
+                yield f"id: {last_id}\ndata: {msg}\n\n"
 
             job = get_job(job_id)
             if job and job["status"] in ("completed", "failed"):
