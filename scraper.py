@@ -126,7 +126,16 @@ def build_report_url(ctx: UserContext, start_date, end_date):
 def scrape_detail(page, activity_id):
     url = f"https://prpt.todaysales.us/reports/salesrep/customerhistory?activityid={activity_id}"
     page.goto(url)
-    page.wait_for_timeout(2000)
+
+    # If redirected to login the session has expired — raise so the caller can log it
+    if "prpt.todaysales.us/reports/" not in page.url:
+        raise RuntimeError(f"Session expired during detail scrape (redirected to {page.url[:80]})")
+
+    # Wait for the dl.row elements that hold email/status before extracting
+    try:
+        page.wait_for_selector("dl.row", timeout=10000)
+    except Exception:
+        log(f"⚠️ Detail page for {activity_id} has no dl.row — page may not have loaded")
 
     return page.evaluate(r"""
         () => {
@@ -234,7 +243,10 @@ def scrape_detail_parallel(activity_id, ctx: UserContext):
     for attempt, delay in enumerate(backoff, start=1):
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=["--no-sandbox", "--disable-dev-shm-usage"],
+                )
                 context = (
                     browser.new_context(storage_state=ctx.session_file)
                     if os.path.exists(ctx.session_file)
@@ -251,6 +263,10 @@ def scrape_detail_parallel(activity_id, ctx: UserContext):
                 return detail
         except Exception as e:
             last_exc = e
+            if "Session expired" in str(e):
+                # No point retrying — session is dead for all detail pages
+                log(f"🔒 {e}")
+                break
             if attempt < len(backoff):
                 log(f"⚠️ Detail scrape failed for {activity_id} (attempt {attempt}/{len(backoff)}): {e} — retrying in {delay}s...")
                 time.sleep(delay)
@@ -322,7 +338,10 @@ def scrape_all(ctx: UserContext, start_date, end_date, otp_fn=None, stop_fn=None
     latest_scrape_file  = ctx.path("latest_scrape.json")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
+        )
 
         if not is_session_expired(ctx) and os.path.exists(ctx.session_file):
             context = browser.new_context(storage_state=ctx.session_file)
@@ -491,7 +510,10 @@ def scrape_installations(ctx: UserContext, start_date=None, end_date=None):
     installations = {}
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-dev-shm-usage"],
+        )
 
         if not is_session_expired(ctx) and os.path.exists(ctx.session_file):
             context = browser.new_context(storage_state=ctx.session_file)
