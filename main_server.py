@@ -15,11 +15,11 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from db import (
     init_db, create_user, get_all_users, get_user_by_id,
-    update_user_prpt, update_user_ghl, delete_user,
+    update_user_prpt, update_user_ghl, delete_user, update_user_password,
     get_active_job_for_user, get_recent_jobs_for_user,
     get_job, get_job_logs_since,
 )
-from auth import authenticate, hash_password
+from auth import authenticate, hash_password, verify_password
 from job_runner import start_job, submit_otp, request_stop
 
 _secret_key = os.getenv("SECRET_KEY", "")
@@ -163,6 +163,36 @@ def settings_save(
         "success": "Settings saved successfully.",
         "error": None,
     })
+
+
+@app.post("/settings/change-password", response_class=HTMLResponse)
+def change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    user = require_user(request)
+    if isinstance(user, RedirectResponse):
+        return user
+
+    def render(error=None, success=None):
+        return templates.TemplateResponse("settings.html", {
+            "request": request,
+            "user": dict(user),
+            "success": success,
+            "error": error,
+        })
+
+    if not verify_password(current_password, user["password_hash"]):
+        return render(error="Current password is incorrect.")
+    if len(new_password) < 6:
+        return render(error="New password must be at least 6 characters.")
+    if new_password != confirm_password:
+        return render(error="New passwords do not match.")
+
+    update_user_password(user["id"], hash_password(new_password))
+    return render(success="Password changed successfully.")
 
 
 # ── Admin panel ───────────────────────────────────────────────────────────────

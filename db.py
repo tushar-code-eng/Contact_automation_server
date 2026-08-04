@@ -121,6 +121,13 @@ def delete_user(user_id: int):
     conn.close()
 
 
+def update_user_password(user_id: int, password_hash: str):
+    conn = get_db()
+    conn.execute("UPDATE users SET password_hash=? WHERE id=?", (password_hash, user_id))
+    conn.commit()
+    conn.close()
+
+
 # ── Jobs ───────────────────────────────────────────────────────────────────
 
 def create_job(user_id: int) -> int:
