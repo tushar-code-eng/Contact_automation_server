@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import asyncio
 
 # Playwright spawns a subprocess — on Windows the default SelectorEventLoop
@@ -217,6 +218,7 @@ def admin_create_user(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
+    is_admin: str = Form(""),
     ghl_api_token: str = Form(""),
     ghl_location_id: str = Form(""),
 ):
@@ -226,14 +228,15 @@ def admin_create_user(
 
     users = get_all_users()
     try:
-        user_id = create_user(email, hash_password(password))
+        role = "admin" if is_admin else "user"
+        user_id = create_user(email, hash_password(password), role=role)
         if ghl_api_token or ghl_location_id:
             update_user_ghl(user_id, ghl_api_token, ghl_location_id)
         users = get_all_users()
         return templates.TemplateResponse("admin.html", {
             "request": request,
             "users": [dict(u) for u in users],
-            "success": f"User {email} created successfully.",
+            "success": f"{role.capitalize()} {email} created successfully.",
             "error": None,
         })
     except Exception:
@@ -274,6 +277,70 @@ def admin_delete_user(request: Request, user_id: int):
 
     delete_user(user_id)
     return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/reset-password/{user_id}", response_class=HTMLResponse)
+def admin_reset_password(
+    request: Request,
+    user_id: int,
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    admin = require_admin(request)
+    if isinstance(admin, RedirectResponse):
+        return admin
+
+    users = get_all_users()
+
+    def render(error=None, success=None):
+        return templates.TemplateResponse("admin.html", {
+            "request": request,
+            "users": [dict(u) for u in users],
+            "success": success,
+            "error": error,
+        })
+
+    if len(new_password) < 6:
+        return render(error="Password must be at least 6 characters.")
+    if new_password != confirm_password:
+        return render(error="Passwords do not match.")
+
+    update_user_password(user_id, hash_password(new_password))
+    users = get_all_users()
+    return render(success="Password reset successfully.")
+
+
+@app.post("/admin/set-last-date/{user_id}", response_class=HTMLResponse)
+def admin_set_last_date(
+    request: Request,
+    user_id: int,
+    last_date: str = Form(...),
+):
+    admin = require_admin(request)
+    if isinstance(admin, RedirectResponse):
+        return admin
+
+    users = get_all_users()
+    last_date = last_date.strip()
+    if not last_date:
+        return templates.TemplateResponse("admin.html", {
+            "request": request,
+            "users": [dict(u) for u in users],
+            "success": None,
+            "error": "Date cannot be empty.",
+        })
+
+    data_dir = os.path.join("data", str(user_id))
+    os.makedirs(data_dir, exist_ok=True)
+    with open(os.path.join(data_dir, "last_date.json"), "w") as f:
+        json.dump({"last_end_date": last_date}, f)
+
+    return templates.TemplateResponse("admin.html", {
+        "request": request,
+        "users": [dict(u) for u in users],
+        "success": f"Last scrape date set to {last_date}.",
+        "error": None,
+    })
 
 
 # ── Run job ───────────────────────────────────────────────────────────────────

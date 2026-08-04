@@ -55,10 +55,16 @@
             <button type="submit" class="btn btn-primary w-100">Create</button>
           </div>
         </div>
-        <div class="row g-3 mt-1">
+        <div class="row g-3 mt-1 align-items-center">
           <div class="col-md-10">
             <label class="form-label fw-semibold">GHL API Token</label>
             <input type="text" name="ghl_api_token" class="form-control" placeholder="pit-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+          </div>
+          <div class="col-md-2">
+            <div class="form-check mt-4">
+              <input type="checkbox" name="is_admin" value="on" class="form-check-input" id="isAdminCheck"/>
+              <label class="form-check-label fw-semibold" for="isAdminCheck">Create as Admin</label>
+            </div>
           </div>
         </div>
       </form>
@@ -108,6 +114,14 @@
                         onclick="openGhlModal({{ u.id }}, '{{ u.ghl_api_token }}', '{{ u.ghl_location_id }}')">
                   Edit GHL
                 </button>
+                <button class="btn btn-sm btn-outline-secondary"
+                        onclick="openResetPwModal({{ u.id }}, '{{ u.email }}')">
+                  Reset Password
+                </button>
+                <button class="btn btn-sm btn-outline-secondary"
+                        onclick="openLastDateModal({{ u.id }}, '{{ u.email }}')">
+                  Set Last Date
+                </button>
                 {% if u.role != 'admin' %}
                 <form method="POST" action="/admin/delete-user/{{ u.id }}" class="d-inline"
                       onsubmit="return confirm('Delete {{ u.email }}?')">
@@ -147,6 +161,49 @@
     </div>
   </div>
 
+  <!-- Reset Password Modal -->
+  <div class="modal fade" id="resetPwModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content p-4">
+        <h6 class="fw-semibold mb-3">Reset Password for <span id="resetPwEmail"></span></h6>
+        <form method="POST" id="resetPwForm">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">New Password</label>
+            <input type="password" name="new_password" class="form-control" placeholder="••••••••" required/>
+          </div>
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Confirm Password</label>
+            <input type="password" name="confirm_password" class="form-control" placeholder="••••••••" required/>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Reset Password</button>
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Set Last Date Modal -->
+  <div class="modal fade" id="lastDateModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content p-4">
+        <h6 class="fw-semibold mb-3">Set Last Scrape Date for <span id="lastDateEmail"></span></h6>
+        <form method="POST" id="lastDateForm">
+          <div class="mb-4">
+            <label class="form-label fw-semibold">Last Scrape Date</label>
+            <input type="text" name="last_date" class="form-control" placeholder="e.g. 6/8/2026" required/>
+            <div class="form-text">Format: M/D/YYYY, matching the PRPT portal's date format.</div>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Save Date</button>
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     function openGhlModal(userId, token, location) {
@@ -154,6 +211,18 @@
       document.getElementById('ghlToken').value = token;
       document.getElementById('ghlLocation').value = location;
       new bootstrap.Modal(document.getElementById('ghlModal')).show();
+    }
+
+    function openResetPwModal(userId, email) {
+      document.getElementById('resetPwForm').action = '/admin/reset-password/' + userId;
+      document.getElementById('resetPwEmail').textContent = email;
+      new bootstrap.Modal(document.getElementById('resetPwModal')).show();
+    }
+
+    function openLastDateModal(userId, email) {
+      document.getElementById('lastDateForm').action = '/admin/set-last-date/' + userId;
+      document.getElementById('lastDateEmail').textContent = email;
+      new bootstrap.Modal(document.getElementById('lastDateModal')).show();
     }
   </script>
 </body>

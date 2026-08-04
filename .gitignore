@@ -44,6 +44,7 @@ Thumbs.db
 
 # Databases
 *.sqlite3
+*.sqlite
 *.db
 *.db-journal
 
