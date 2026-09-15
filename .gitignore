@@ -42,12 +42,6 @@ Thumbs.db
 .env
 *.env
 
-# Databases
-*.sqlite3
-*.sqlite
-*.db
-*.db-journal
-
 # Logs and temp files
 *.log
 tmp/
